@@ -54,6 +54,19 @@ function saveMachines() {
   saveJson(STATE_FILE, Object.fromEntries(machines));
 }
 
+const machineLogs = new Map(); // machineId -> string[]
+const MAX_LOG_LINES = 500;
+
+function requireFreshTotp(req, res, session) {
+  const u = users[session.username];
+  const totp = req.body && req.body.totp;
+  if (!u || !authenticator.check(String(totp || ""), u.totpSecret)) {
+    res.status(401).json({ error: "step-up 2FA required", requireTotp: true });
+    return false;
+  }
+  return true;
+}
+
 let users = loadJson(USERS_FILE, {});
 function saveUsers() {
   saveJson(USERS_FILE, users);
@@ -202,11 +215,44 @@ app.post("/api/heartbeat", (req, res) => {
     lastError: lastError || null,
     lastSeenAt: new Date().toISOString(),
     desiredEnabled: existing.desiredEnabled === undefined ? null : existing.desiredEnabled,
+    pendingTask: existing.pendingTask || null,
+    lastTaskResult: existing.lastTaskResult || null,
   };
   machines.set(machineId, updated);
   saveMachines();
 
-  res.json({ desiredEnabled: updated.desiredEnabled });
+  res.json({ desiredEnabled: updated.desiredEnabled, task: updated.pendingTask || null });
+});
+
+// ---------- client machines report ผลลัพธ์ของงานที่สั่งไป ----------
+app.post("/api/task-result", (req, res) => {
+  const { machineId, taskId, success, result, error } = req.body || {};
+  const m = machines.get(machineId);
+  if (!m) return res.status(404).json({ error: "not found" });
+  if (m.pendingTask && m.pendingTask.id === taskId) {
+    m.lastTaskResult = {
+      taskId,
+      type: m.pendingTask.type,
+      success: !!success,
+      result: result || null,
+      error: error || null,
+      finishedAt: new Date().toISOString(),
+    };
+    m.pendingTask = null;
+    machines.set(machineId, m);
+    saveMachines();
+  }
+  res.json({ success: true });
+});
+
+// ---------- client machines ส่ง log บรรทัดใหม่เข้ามา ----------
+app.post("/api/logs", (req, res) => {
+  const { machineId, lines } = req.body || {};
+  if (!machineId || !Array.isArray(lines)) return res.status(400).json({ error: "missing data" });
+  const existing = machineLogs.get(machineId) || [];
+  const updatedLogs = existing.concat(lines);
+  machineLogs.set(machineId, updatedLogs.slice(-MAX_LOG_LINES));
+  res.json({ success: true });
 });
 
 // ---------- logged-in users: view/control machines within their allowed modules ----------
@@ -232,6 +278,44 @@ app.post("/api/machines/:id/command", requireUser, (req, res) => {
   machines.set(req.params.id, m);
   saveMachines();
   res.json({ success: true, machine: m });
+});
+
+app.get("/api/machines/:id/logs", requireUser, (req, res) => {
+  const m = machines.get(req.params.id);
+  if (!m) return res.status(404).json({ error: "not found" });
+  if (!canSeeModule(req.session, m.project)) return res.status(403).json({ error: "no access to this module" });
+  res.json({ lines: machineLogs.get(req.params.id) || [] });
+});
+
+// ---------- สั่งงานระยะไกล: แก้ไฟล์ / git / config — ถือเป็นคำสั่งเสี่ยงเสมอ ต้องยืนยัน 2FA ทุกครั้ง ----------
+app.post("/api/machines/:id/task", requireUser, (req, res) => {
+  const m = machines.get(req.params.id);
+  if (!m) return res.status(404).json({ error: "not found" });
+  if (!canSeeModule(req.session, m.project)) return res.status(403).json({ error: "no access to this module" });
+  if (!requireFreshTotp(req, res, req.session)) return;
+
+  const { type, payload } = req.body || {};
+  const ALLOWED_TASKS = ["readFile", "writeFile", "listDir", "gitStatus", "gitPull", "gitLog", "getConfig", "setConfig"];
+  if (!ALLOWED_TASKS.includes(type)) return res.status(400).json({ error: "unknown task type" });
+
+  m.pendingTask = {
+    id: crypto.randomBytes(8).toString("hex"),
+    type,
+    payload: payload || {},
+    requestedBy: req.session.username,
+    requestedAt: new Date().toISOString(),
+  };
+  m.lastTaskResult = null;
+  machines.set(req.params.id, m);
+  saveMachines();
+  res.json({ success: true, taskId: m.pendingTask.id });
+});
+
+app.get("/api/machines/:id/task-result", requireUser, (req, res) => {
+  const m = machines.get(req.params.id);
+  if (!m) return res.status(404).json({ error: "not found" });
+  if (!canSeeModule(req.session, m.project)) return res.status(403).json({ error: "no access to this module" });
+  res.json({ pendingTask: m.pendingTask || null, lastTaskResult: m.lastTaskResult || null });
 });
 
 app.delete("/api/machines/:id", requireUser, (req, res) => {

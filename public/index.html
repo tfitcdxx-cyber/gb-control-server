@@ -68,6 +68,65 @@
     </div>
   </div>
 
+  <div id="toolsModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-800">
+        <h2 class="font-bold text-sm">จัดการเครื่อง: <span id="toolsMachineName" class="text-indigo-300"></span></h2>
+        <button onclick="closeTools()" class="text-slate-500 hover:text-slate-300 text-sm">ปิด ✕</button>
+      </div>
+      <div class="flex gap-1 px-5 pt-3">
+        <button onclick="switchToolTab('logs')" id="tabBtn-logs" class="px-3 py-1.5 text-xs rounded-t-lg bg-slate-800">Logs</button>
+        <button onclick="switchToolTab('file')" id="tabBtn-file" class="px-3 py-1.5 text-xs rounded-t-lg bg-slate-950 text-slate-400">แก้ไฟล์</button>
+        <button onclick="switchToolTab('git')" id="tabBtn-git" class="px-3 py-1.5 text-xs rounded-t-lg bg-slate-950 text-slate-400">Git</button>
+        <button onclick="switchToolTab('config')" id="tabBtn-config" class="px-3 py-1.5 text-xs rounded-t-lg bg-slate-950 text-slate-400">Config</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 pt-3">
+        <div id="tab-logs" class="tool-tab">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs text-slate-500">แสดง log ล่าสุดจากเครื่องนี้ (บัฟเฟอร์สูงสุด 500 บรรทัด)</span>
+            <button onclick="loadLogs()" class="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded">รีเฟรช</button>
+          </div>
+          <pre id="logsOutput" class="bg-black/50 rounded-lg p-3 text-[11px] leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">กำลังโหลด...</pre>
+        </div>
+
+        <div id="tab-file" class="tool-tab hidden">
+          <div class="flex gap-2 mb-2">
+            <input id="filePathInput" placeholder="เช่น Auto-Approve/settings.json" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-xs">
+            <button onclick="loadFile()" class="px-3 h-9 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs">โหลดไฟล์</button>
+          </div>
+          <textarea id="fileContentBox" class="w-full h-64 bg-black/50 border border-slate-700 rounded-lg p-3 text-[11px] font-mono"></textarea>
+          <div class="flex justify-between items-center mt-2">
+            <span id="fileMsg" class="text-xs text-slate-500"></span>
+            <button onclick="saveFile()" class="px-3 h-9 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold">บันทึกไฟล์ (ต้องยืนยัน 2FA)</button>
+          </div>
+          <p class="text-[10.5px] text-slate-600 mt-2">Path นับจากโฟลเดอร์รากของโปรเจกต์บนเครื่องนั้น เช่น GB999/Auto-Approve/... — จะเขียนทับไฟล์จริงบนเครื่องทันทีที่เครื่องนั้นเช็คอินครั้งถัดไป (ไม่เกิน ~20 วิ)</p>
+        </div>
+
+        <div id="tab-git" class="tool-tab hidden">
+          <div class="flex gap-2 mb-3">
+            <button onclick="runGit('gitStatus')" class="px-3 h-9 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs">git status</button>
+            <button onclick="runGit('gitLog')" class="px-3 h-9 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs">git log</button>
+            <button onclick="runGit('gitPull')" class="px-3 h-9 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 rounded-lg text-xs">git pull</button>
+          </div>
+          <pre id="gitOutput" class="bg-black/50 rounded-lg p-3 text-[11px] whitespace-pre-wrap max-h-80 overflow-y-auto">-</pre>
+          <p class="text-[10.5px] text-slate-600 mt-2">ใช้ได้เฉพาะเครื่องที่โฟลเดอร์โปรเจกต์เป็น git repository อยู่แล้วเท่านั้น</p>
+        </div>
+
+        <div id="tab-config" class="tool-tab hidden">
+          <div class="flex gap-2 mb-2">
+            <button onclick="loadConfig()" class="px-3 h-9 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs">โหลด config ปัจจุบัน</button>
+          </div>
+          <textarea id="configBox" class="w-full h-56 bg-black/50 border border-slate-700 rounded-lg p-3 text-[11px] font-mono" placeholder='{"key": "value"}'></textarea>
+          <div class="flex justify-between items-center mt-2">
+            <span id="configMsg" class="text-xs text-slate-500"></span>
+            <button onclick="saveConfig()" class="px-3 h-9 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold">บันทึก config (ต้องยืนยัน 2FA)</button>
+          </div>
+          <p class="text-[10.5px] text-slate-600 mt-2">เก็บลงไฟล์ shared/runtime-config.json ของโปรเจกต์บนเครื่องนั้น ต้องมีโค้ดฝั่งโมดูลอ่านค่านี้ไปใช้เองจึงจะมีผลจริง</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script>
   let sessionToken = localStorage.getItem('gb_session_token') || '';
   let pendingCommand = null;
@@ -162,7 +221,10 @@
             </div>
           </td>
           <td class="px-4 py-3">
-            <button onclick="removeMachine('${m.machineId}')" class="text-[10px] text-slate-500 hover:text-rose-400">ลบ</button>
+            <div class="flex items-center gap-2">
+              <button onclick="openTools('${m.machineId}', '${m.name}')" class="text-[10px] text-indigo-400 hover:text-indigo-300">จัดการ</button>
+              <button onclick="removeMachine('${m.machineId}')" class="text-[10px] text-slate-500 hover:text-rose-400">ลบ</button>
+            </div>
           </td>
         </tr>`;
     }).join('');
@@ -218,6 +280,133 @@
 
   if (sessionToken) showDash();
   setInterval(() => { if (sessionToken) loadMachines(); }, 10000);
+
+  // ---------- Tools modal: Logs / File Editor / Git / Config ----------
+  let toolsMachineId = null;
+  let logsTimer = null;
+
+  function openTools(machineId, name) {
+    toolsMachineId = machineId;
+    document.getElementById('toolsMachineName').textContent = name;
+    document.getElementById('toolsModal').classList.remove('hidden');
+    switchToolTab('logs');
+  }
+
+  function closeTools() {
+    toolsMachineId = null;
+    document.getElementById('toolsModal').classList.add('hidden');
+    if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
+  }
+
+  function switchToolTab(tab) {
+    ['logs', 'file', 'git', 'config'].forEach((t) => {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+      document.getElementById('tabBtn-' + t).className = 'px-3 py-1.5 text-xs rounded-t-lg ' +
+        (t === tab ? 'bg-slate-800' : 'bg-slate-950 text-slate-400');
+    });
+    if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
+    if (tab === 'logs') {
+      loadLogs();
+      logsTimer = setInterval(loadLogs, 5000);
+    }
+  }
+
+  async function loadLogs() {
+    if (!toolsMachineId) return;
+    try {
+      const res = await fetch(`/api/machines/${toolsMachineId}/logs`, { headers: { 'x-session-token': sessionToken } });
+      const data = await res.json();
+      const box = document.getElementById('logsOutput');
+      box.textContent = (data.lines || []).join('\n') || '(ยังไม่มี log ส่งเข้ามา)';
+      box.scrollTop = box.scrollHeight;
+    } catch (err) {
+      document.getElementById('logsOutput').textContent = 'โหลด log ไม่สำเร็จ: ' + err.message;
+    }
+  }
+
+  // ส่งคำสั่งงาน (ต้องยืนยัน 2FA ทุกครั้ง) แล้วรอผลลัพธ์กลับมา (เครื่องปลายทางรับคำสั่งภายใน ~20 วิ)
+  async function submitTaskAndWait(type, payload, statusEl) {
+    const totp = prompt('กรอกรหัส 2FA (6 หลัก) เพื่อยืนยันคำสั่งนี้');
+    if (!totp) return null;
+    if (statusEl) statusEl.textContent = 'กำลังส่งคำสั่ง...';
+    const submitRes = await fetch(`/api/machines/${toolsMachineId}/task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({ type, payload, totp }),
+    });
+    const submitData = await submitRes.json();
+    if (!submitRes.ok) {
+      if (statusEl) statusEl.textContent = submitData.error || 'ยืนยันไม่สำเร็จ';
+      return null;
+    }
+    const taskId = submitData.taskId;
+    if (statusEl) statusEl.textContent = 'ส่งคำสั่งแล้ว รอเครื่องรับ-ตอบกลับ (ไม่เกิน ~20 วิ)...';
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const res = await fetch(`/api/machines/${toolsMachineId}/task-result`, { headers: { 'x-session-token': sessionToken } });
+      const data = await res.json();
+      if (data.lastTaskResult && data.lastTaskResult.taskId === taskId) {
+        if (statusEl) statusEl.textContent = data.lastTaskResult.success ? 'สำเร็จ' : ('ผิดพลาด: ' + data.lastTaskResult.error);
+        return data.lastTaskResult;
+      }
+    }
+    if (statusEl) statusEl.textContent = 'ไม่ได้รับการตอบกลับ (เครื่องอาจออฟไลน์)';
+    return null;
+  }
+
+  async function loadFile() {
+    const p = document.getElementById('filePathInput').value.trim();
+    const msg = document.getElementById('fileMsg');
+    if (!p) { msg.textContent = 'กรอก path ก่อน'; return; }
+    const result = await submitTaskAndWait('readFile', { path: p }, msg);
+    if (result && result.success) {
+      document.getElementById('fileContentBox').value = (result.result && result.result.content) || '';
+    }
+  }
+
+  async function saveFile() {
+    const p = document.getElementById('filePathInput').value.trim();
+    const content = document.getElementById('fileContentBox').value;
+    const msg = document.getElementById('fileMsg');
+    if (!p) { msg.textContent = 'กรอก path ก่อน'; return; }
+    if (!confirm(`ยืนยันเขียนทับไฟล์ "${p}" บนเครื่องนี้จริงหรือไม่?`)) return;
+    await submitTaskAndWait('writeFile', { path: p, content }, msg);
+  }
+
+  async function runGit(type) {
+    const out = document.getElementById('gitOutput');
+    const result = await submitTaskAndWait(type, {}, out);
+    if (result && result.success) {
+      out.textContent = (result.result && result.result.output) || '(ไม่มีผลลัพธ์)';
+    } else if (result) {
+      out.textContent = 'ผิดพลาด: ' + result.error;
+    }
+  }
+
+  async function loadConfig() {
+    const msg = document.getElementById('configMsg');
+    const result = await submitTaskAndWait('getConfig', {}, msg);
+    if (result && result.success) {
+      try {
+        document.getElementById('configBox').value = JSON.stringify(JSON.parse(result.result.config), null, 2);
+      } catch (err) {
+        document.getElementById('configBox').value = result.result.config;
+      }
+    }
+  }
+
+  async function saveConfig() {
+    const msg = document.getElementById('configMsg');
+    let parsed;
+    try {
+      parsed = JSON.parse(document.getElementById('configBox').value || '{}');
+    } catch (err) {
+      msg.textContent = 'JSON ไม่ถูกต้อง: ' + err.message;
+      return;
+    }
+    await submitTaskAndWait('setConfig', { config: parsed }, msg);
+  }
 </script>
 </body>
 </html>
