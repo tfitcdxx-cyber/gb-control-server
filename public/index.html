@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GB Control Server</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; }
+  * { scrollbar-width: none; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-6">
+
+  <div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-xl font-bold">แดชบอร์ดควบคุม Auto Approve</h1>
+      <div class="flex items-center gap-2">
+        <input id="tokenInput" type="password" placeholder="Admin token" class="bg-slate-900 border border-slate-700 rounded-lg px-3 h-9 text-sm w-48">
+        <button onclick="saveToken()" class="h-9 px-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">เข้าสู่ระบบ</button>
+      </div>
+    </div>
+
+    <div id="statusMsg" class="text-sm text-slate-400 mb-3"></div>
+
+    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+      <table class="w-full text-left text-[13px]">
+        <thead>
+          <tr class="bg-slate-950/50 text-slate-400 text-[10.5px] uppercase tracking-wider border-b border-slate-800">
+            <th class="px-4 py-3">ชื่อเครื่อง</th>
+            <th class="px-4 py-3">โปรเจก</th>
+            <th class="px-4 py-3">สถานะปัจจุบัน</th>
+            <th class="px-4 py-3">ตรวจแล้ว</th>
+            <th class="px-4 py-3">เห็นล่าสุด</th>
+            <th class="px-4 py-3">Error ล่าสุด</th>
+            <th class="px-4 py-3 text-center">สั่งเปิด/ปิด</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody" class="divide-y divide-slate-800">
+          <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">กรุณาใส่ admin token แล้วกด "เข้าสู่ระบบ"</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  let token = localStorage.getItem('gb_control_token') || '';
+  document.getElementById('tokenInput').value = token;
+
+  function saveToken() {
+    token = document.getElementById('tokenInput').value.trim();
+    localStorage.setItem('gb_control_token', token);
+    loadMachines();
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '-';
+    const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diffSec < 60) return `${diffSec} วิ ที่แล้ว`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} นาที ที่แล้ว`;
+    return `${Math.floor(diffSec / 3600)} ชม. ที่แล้ว`;
+  }
+
+  async function loadMachines() {
+    if (!token) return;
+    const statusMsg = document.getElementById('statusMsg');
+    try {
+      const res = await fetch('/api/machines', { headers: { 'x-admin-token': token } });
+      if (res.status === 401) {
+        statusMsg.textContent = 'Token ไม่ถูกต้อง';
+        statusMsg.className = 'text-sm text-rose-400 mb-3';
+        return;
+      }
+      const data = await res.json();
+      statusMsg.textContent = `พบ ${data.machines.length} เครื่อง — อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}`;
+      statusMsg.className = 'text-sm text-slate-400 mb-3';
+      renderTable(data.machines);
+    } catch (err) {
+      statusMsg.textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + err.message;
+      statusMsg.className = 'text-sm text-rose-400 mb-3';
+    }
+  }
+
+  function renderTable(machines) {
+    const tbody = document.getElementById('tbody');
+    if (machines.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">ยังไม่มีเครื่องไหนเชื่อมต่อเข้ามา</td></tr>`;
+      return;
+    }
+    machines.sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt));
+
+    tbody.innerHTML = machines.map((m) => {
+      const isStale = !m.lastSeenAt || (Date.now() - new Date(m.lastSeenAt).getTime() > 3 * 60 * 1000);
+      const statusBadge = isStale
+        ? `<span class="px-2 py-0.5 text-[10px] bg-slate-700/40 text-slate-400 rounded-md">ขาดการติดต่อ</span>`
+        : m.enabled
+        ? `<span class="px-2 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md">เปิดใช้งาน</span>`
+        : `<span class="px-2 py-0.5 text-[10px] bg-slate-700/40 text-slate-400 rounded-md">ปิดอยู่</span>`;
+
+      const cmdBadge = m.desiredEnabled === null
+        ? '<span class="text-[10px] text-slate-500">— ไม่ได้สั่ง —</span>'
+        : m.desiredEnabled
+        ? '<span class="text-[10px] text-emerald-400">สั่งเปิดไว้</span>'
+        : '<span class="text-[10px] text-rose-400">สั่งปิดไว้</span>';
+
+      return `
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-4 py-3 font-medium">${m.name}</td>
+          <td class="px-4 py-3 text-slate-400">${m.project}</td>
+          <td class="px-4 py-3">${statusBadge}</td>
+          <td class="px-4 py-3 text-slate-300">${m.processedCount ?? '-'}</td>
+          <td class="px-4 py-3 text-slate-400 text-[11px]">${timeAgo(m.lastSeenAt)}</td>
+          <td class="px-4 py-3 text-rose-400 text-[11px] truncate max-w-[160px]" title="${m.lastError || ''}">${m.lastError || '-'}</td>
+          <td class="px-4 py-3">
+            <div class="flex flex-col items-center gap-1">
+              <div class="flex gap-1">
+                <button onclick="sendCommand('${m.machineId}', true)" class="px-2 py-1 text-[10px] bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded">เปิด</button>
+                <button onclick="sendCommand('${m.machineId}', false)" class="px-2 py-1 text-[10px] bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded">ปิด</button>
+                <button onclick="sendCommand('${m.machineId}', null)" class="px-2 py-1 text-[10px] bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 rounded">เคลียร์</button>
+              </div>
+              ${cmdBadge}
+            </div>
+          </td>
+          <td class="px-4 py-3">
+            <button onclick="removeMachine('${m.machineId}')" class="text-[10px] text-slate-500 hover:text-rose-400">ลบ</button>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  async function sendCommand(machineId, enabled) {
+    await fetch(`/api/machines/${machineId}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ enabled }),
+    });
+    loadMachines();
+  }
+
+  async function removeMachine(machineId) {
+    if (!confirm('ลบเครื่องนี้ออกจากรายการ?')) return;
+    await fetch(`/api/machines/${machineId}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': token },
+    });
+    loadMachines();
+  }
+
+  if (token) loadMachines();
+  setInterval(loadMachines, 10000);
+</script>
+</body>
+</html>

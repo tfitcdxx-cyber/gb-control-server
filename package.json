@@ -1,0 +1,12 @@
+{
+  "name": "gb-control-server",
+  "version": "1.0.0",
+  "description": "เซิร์ฟเวอร์กลางคุมสถานะ Auto Approve ของทุกเครื่อง (999 + 777) ดูสถานะสด + สั่งเปิด/ปิดจากที่เดียว",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
