@@ -1,0 +1,15 @@
+{
+  "name": "gb-control-server",
+  "version": "2.0.0",
+  "description": "Central control server for GB999/GB777 modules - status, remote commands, user roles, 2FA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "bcryptjs": "^2.4.3",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.3"
+  }
+}

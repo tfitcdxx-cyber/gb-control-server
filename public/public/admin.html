@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GB Control Server - Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; }
+  * { scrollbar-width: none; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-6">
+
+  <div class="max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-xl font-bold">จัดการผู้ใช้ (Root)</h1>
+      <a href="/index.html" class="text-sm text-slate-400 hover:text-slate-200">กลับหน้าแดชบอร์ด</a>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
+      <label class="text-xs text-slate-400">Root token (ADMIN_TOKEN)</label>
+      <div class="flex gap-2 mt-1">
+        <input id="rootToken" type="password" placeholder="ใส่ ADMIN_TOKEN" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+        <button onclick="saveRoot()" class="h-9 px-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">ใช้ token นี้</button>
+      </div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
+      <h2 class="font-semibold mb-3">สร้างผู้ใช้ใหม่</h2>
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="newUsername" placeholder="Username" class="bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+        <input id="newPassword" type="password" placeholder="Password" class="bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+      </div>
+      <label class="text-xs text-slate-400">สิทธิ์</label>
+      <div class="flex items-center gap-3 mb-2 mt-1">
+        <label class="text-sm flex items-center gap-1"><input type="radio" name="role" value="user" checked> ผู้ใช้ทั่วไป (เลือกเมนูได้)</label>
+        <label class="text-sm flex items-center gap-1"><input type="radio" name="role" value="superadmin"> Superadmin (ทุกเมนู)</label>
+      </div>
+      <div id="moduleChecks" class="grid grid-cols-2 gap-1 mb-3 text-sm"></div>
+      <button onclick="createUser()" class="h-9 px-4 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-semibold">สร้างผู้ใช้</button>
+      <div id="createMsg" class="text-sm mt-2"></div>
+      <div id="qrBox" class="hidden mt-3 p-3 bg-slate-800 rounded-lg text-center">
+        <p class="text-xs text-slate-400 mb-2">ให้ผู้ใช้สแกน QR นี้ด้วย Google Authenticator (แสดงครั้งเดียว)</p>
+        <img id="qrImg" class="mx-auto rounded-lg" />
+      </div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <table class="w-full text-left text-[13px]">
+        <thead>
+          <tr class="bg-slate-950/50 text-slate-400 text-[10.5px] uppercase tracking-wider border-b border-slate-800">
+            <th class="px-4 py-3">Username</th>
+            <th class="px-4 py-3">สิทธิ์</th>
+            <th class="px-4 py-3">เมนูที่เปิด</th>
+            <th class="px-4 py-3">สถานะ</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="userTbody"><tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">ใส่ root token แล้วรายชื่อจะขึ้นที่นี่</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  let rootToken = localStorage.getItem('gb_root_token') || '';
+  let ALL_MODULES = [];
+  document.getElementById('rootToken').value = rootToken;
+
+  async function saveRoot() {
+    rootToken = document.getElementById('rootToken').value.trim();
+    localStorage.setItem('gb_root_token', rootToken);
+    await loadModules();
+    await loadUsers();
+  }
+
+  async function loadModules() {
+    const res = await fetch('/api/admin/modules', { headers: { 'x-admin-token': rootToken } });
+    if (!res.ok) return;
+    const data = await res.json();
+    ALL_MODULES = data.all;
+    document.getElementById('moduleChecks').innerHTML = ALL_MODULES.map((m) =>
+      `<label class="flex items-center gap-1"><input type="checkbox" class="modChk" value="${m}"> ${m}</label>`
+    ).join('');
+  }
+
+  async function loadUsers() {
+    const tbody = document.getElementById('userTbody');
+    const res = await fetch('/api/admin/users', { headers: { 'x-admin-token': rootToken } });
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-rose-400">Token ไม่ถูกต้อง</td></tr>`; return; }
+    const data = await res.json();
+    if (data.users.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">ยังไม่มีผู้ใช้</td></tr>`; return; }
+    tbody.innerHTML = data.users.map((u) => `
+      <tr class="border-t border-slate-800">
+        <td class="px-4 py-3">${u.username}</td>
+        <td class="px-4 py-3">${u.role === 'superadmin' ? 'Superadmin' : 'ผู้ใช้ทั่วไป'}</td>
+        <td class="px-4 py-3 text-slate-400 text-[11px]">${(u.allowedModules || []).join(', ') || '-'}</td>
+        <td class="px-4 py-3">${u.enabled ? 'เปิดใช้งาน' : 'ปิดอยู่'}</td>
+        <td class="px-4 py-3">
+          <button onclick="toggleUser('${u.username}', ${!u.enabled})" class="text-[11px] text-slate-400 hover:text-slate-200 mr-2">${u.enabled ? 'ปิด' : 'เปิด'}</button>
+          <button onclick="deleteUser('${u.username}')" class="text-[11px] text-rose-400 hover:text-rose-300">ลบ</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  async function createUser() {
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value;
+    const role = document.querySelector('input[name="role"]:checked').value;
+    const allowedModules = Array.from(document.querySelectorAll('.modChk:checked')).map((c) => c.value);
+    const msg = document.getElementById('createMsg');
+    if (!username || !password) { msg.textContent = 'กรอก username/password ให้ครบ'; msg.className = 'text-sm mt-2 text-rose-400'; return; }
+
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': rootToken },
+      body: JSON.stringify({ username, password, role, allowedModules }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msg.textContent = data.error || 'สร้างไม่สำเร็จ'; msg.className = 'text-sm mt-2 text-rose-400'; return; }
+    msg.textContent = 'สร้างผู้ใช้สำเร็จ';
+    msg.className = 'text-sm mt-2 text-emerald-400';
+    document.getElementById('qrBox').classList.remove('hidden');
+    document.getElementById('qrImg').src = data.qrDataUrl;
+    loadUsers();
+  }
+
+  async function toggleUser(username, enabled) {
+    await fetch(`/api/admin/users/${username}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': rootToken },
+      body: JSON.stringify({ enabled }),
+    });
+    loadUsers();
+  }
+
+  async function deleteUser(username) {
+    if (!confirm(`ลบผู้ใช้ ${username}?`)) return;
+    await fetch(`/api/admin/users/${username}`, { method: 'DELETE', headers: { 'x-admin-token': rootToken } });
+    loadUsers();
+  }
+
+  if (rootToken) { loadModules(); loadUsers(); }
+</script>
+</body>
+</html>
