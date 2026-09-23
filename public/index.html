@@ -12,12 +12,22 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-6">
 
-  <div class="max-w-5xl mx-auto">
+  <div id="loginBox" class="max-w-sm mx-auto mt-24 bg-slate-900 border border-slate-800 rounded-xl p-6">
+    <h1 class="text-lg font-bold mb-4">เข้าสู่ระบบ</h1>
+    <input id="loginUsername" placeholder="Username" class="w-full mb-2 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+    <input id="loginPassword" type="password" placeholder="Password" class="w-full mb-2 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+    <input id="loginTotp" placeholder="รหัส 2FA (6 หลัก)" class="w-full mb-3 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+    <button onclick="login()" class="w-full h-9 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">เข้าสู่ระบบ</button>
+    <div id="loginMsg" class="text-sm text-rose-400 mt-2"></div>
+    <a href="/admin.html" class="block text-center text-xs text-slate-500 mt-4 hover:text-slate-300">จัดการผู้ใช้ (Root)</a>
+  </div>
+
+  <div id="dashBox" class="max-w-6xl mx-auto hidden">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold">แดชบอร์ดควบคุม Auto Approve</h1>
-      <div class="flex items-center gap-2">
-        <input id="tokenInput" type="password" placeholder="Admin token" class="bg-slate-900 border border-slate-700 rounded-lg px-3 h-9 text-sm w-48">
-        <button onclick="saveToken()" class="h-9 px-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">เข้าสู่ระบบ</button>
+      <h1 class="text-xl font-bold">แดชบอร์ดควบคุม GB999 / GB777</h1>
+      <div class="flex items-center gap-3">
+        <span id="whoami" class="text-sm text-slate-400"></span>
+        <button onclick="logout()" class="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm">ออกจากระบบ</button>
       </div>
     </div>
 
@@ -28,30 +38,72 @@
         <thead>
           <tr class="bg-slate-950/50 text-slate-400 text-[10.5px] uppercase tracking-wider border-b border-slate-800">
             <th class="px-4 py-3">ชื่อเครื่อง</th>
-            <th class="px-4 py-3">โปรเจก</th>
-            <th class="px-4 py-3">สถานะปัจจุบัน</th>
+            <th class="px-4 py-3">โมดูล</th>
+            <th class="px-4 py-3">User (backend)</th>
+            <th class="px-4 py-3">Public IP</th>
+            <th class="px-4 py-3">สถานะ</th>
             <th class="px-4 py-3">ตรวจแล้ว</th>
             <th class="px-4 py-3">เห็นล่าสุด</th>
-            <th class="px-4 py-3">Error ล่าสุด</th>
             <th class="px-4 py-3 text-center">สั่งเปิด/ปิด</th>
             <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody id="tbody" class="divide-y divide-slate-800">
-          <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">กรุณาใส่ admin token แล้วกด "เข้าสู่ระบบ"</td></tr>
+          <tr><td colspan="9" class="px-4 py-8 text-center text-slate-500">กำลังโหลด...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-<script>
-  let token = localStorage.getItem('gb_control_token') || '';
-  document.getElementById('tokenInput').value = token;
+  <div id="totpModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 w-80">
+      <h2 class="font-bold mb-2">ยืนยัน 2FA อีกครั้ง</h2>
+      <p class="text-xs text-slate-400 mb-3">เมนูนี้เป็นเมนูเสี่ยง ต้องกรอกรหัสจากแอปยืนยันอีกครั้งก่อนทำรายการ</p>
+      <input id="stepupTotp" placeholder="รหัส 6 หลัก" class="w-full mb-3 bg-slate-800 border border-slate-700 rounded-lg px-3 h-9 text-sm">
+      <div class="flex gap-2">
+        <button onclick="closeStepup()" class="flex-1 h-9 bg-slate-800 rounded-lg text-sm">ยกเลิก</button>
+        <button onclick="confirmStepup()" class="flex-1 h-9 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">ยืนยัน</button>
+      </div>
+      <div id="stepupMsg" class="text-xs text-rose-400 mt-2"></div>
+    </div>
+  </div>
 
-  function saveToken() {
-    token = document.getElementById('tokenInput').value.trim();
-    localStorage.setItem('gb_control_token', token);
+<script>
+  let sessionToken = localStorage.getItem('gb_session_token') || '';
+  let pendingCommand = null;
+
+  function showDash() {
+    document.getElementById('loginBox').classList.add('hidden');
+    document.getElementById('dashBox').classList.remove('hidden');
     loadMachines();
+  }
+
+  async function login() {
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const totp = document.getElementById('loginTotp').value.trim();
+    const msg = document.getElementById('loginMsg');
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, totp }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msg.textContent = data.error || 'เข้าสู่ระบบไม่สำเร็จ'; return; }
+      sessionToken = data.token;
+      localStorage.setItem('gb_session_token', sessionToken);
+      localStorage.setItem('gb_username', username);
+      showDash();
+    } catch (err) {
+      msg.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + err.message;
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('gb_session_token');
+    sessionToken = '';
+    location.reload();
   }
 
   function timeAgo(iso) {
@@ -63,29 +115,24 @@
   }
 
   async function loadMachines() {
-    if (!token) return;
     const statusMsg = document.getElementById('statusMsg');
     try {
-      const res = await fetch('/api/machines', { headers: { 'x-admin-token': token } });
-      if (res.status === 401) {
-        statusMsg.textContent = 'Token ไม่ถูกต้อง';
-        statusMsg.className = 'text-sm text-rose-400 mb-3';
-        return;
-      }
+      const res = await fetch('/api/machines', { headers: { 'x-session-token': sessionToken } });
+      if (res.status === 401) { logout(); return; }
       const data = await res.json();
+      document.getElementById('whoami').textContent =
+        `${localStorage.getItem('gb_username') || ''} (${data.role === 'superadmin' ? 'สิทธิ์เต็ม' : (data.allowedModules || []).join(', ')})`;
       statusMsg.textContent = `พบ ${data.machines.length} เครื่อง — อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH')}`;
-      statusMsg.className = 'text-sm text-slate-400 mb-3';
       renderTable(data.machines);
     } catch (err) {
       statusMsg.textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + err.message;
-      statusMsg.className = 'text-sm text-rose-400 mb-3';
     }
   }
 
   function renderTable(machines) {
     const tbody = document.getElementById('tbody');
     if (machines.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">ยังไม่มีเครื่องไหนเชื่อมต่อเข้ามา</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-slate-500">ยังไม่มีเครื่องไหนเชื่อมต่อเข้ามา (หรือไม่มีสิทธิ์เห็น)</td></tr>`;
       return;
     }
     machines.sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt));
@@ -98,28 +145,20 @@
         ? `<span class="px-2 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md">เปิดใช้งาน</span>`
         : `<span class="px-2 py-0.5 text-[10px] bg-slate-700/40 text-slate-400 rounded-md">ปิดอยู่</span>`;
 
-      const cmdBadge = m.desiredEnabled === null
-        ? '<span class="text-[10px] text-slate-500">— ไม่ได้สั่ง —</span>'
-        : m.desiredEnabled
-        ? '<span class="text-[10px] text-emerald-400">สั่งเปิดไว้</span>'
-        : '<span class="text-[10px] text-rose-400">สั่งปิดไว้</span>';
-
       return `
         <tr class="hover:bg-slate-800/30">
           <td class="px-4 py-3 font-medium">${m.name}</td>
           <td class="px-4 py-3 text-slate-400">${m.project}</td>
+          <td class="px-4 py-3 text-slate-300">${m.backendUser || '-'}</td>
+          <td class="px-4 py-3 text-slate-400 text-[11px]">${m.publicIp || '-'}</td>
           <td class="px-4 py-3">${statusBadge}</td>
           <td class="px-4 py-3 text-slate-300">${m.processedCount ?? '-'}</td>
           <td class="px-4 py-3 text-slate-400 text-[11px]">${timeAgo(m.lastSeenAt)}</td>
-          <td class="px-4 py-3 text-rose-400 text-[11px] truncate max-w-[160px]" title="${m.lastError || ''}">${m.lastError || '-'}</td>
           <td class="px-4 py-3">
-            <div class="flex flex-col items-center gap-1">
-              <div class="flex gap-1">
-                <button onclick="sendCommand('${m.machineId}', true)" class="px-2 py-1 text-[10px] bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded">เปิด</button>
-                <button onclick="sendCommand('${m.machineId}', false)" class="px-2 py-1 text-[10px] bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded">ปิด</button>
-                <button onclick="sendCommand('${m.machineId}', null)" class="px-2 py-1 text-[10px] bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 rounded">เคลียร์</button>
-              </div>
-              ${cmdBadge}
+            <div class="flex gap-1 justify-center">
+              <button onclick="sendCommand('${m.machineId}', true)" class="px-2 py-1 text-[10px] bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded">เปิด</button>
+              <button onclick="sendCommand('${m.machineId}', false)" class="px-2 py-1 text-[10px] bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded">ปิด</button>
+              <button onclick="sendCommand('${m.machineId}', null)" class="px-2 py-1 text-[10px] bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 rounded">เคลียร์</button>
             </div>
           </td>
           <td class="px-4 py-3">
@@ -129,12 +168,42 @@
     }).join('');
   }
 
-  async function sendCommand(machineId, enabled) {
-    await fetch(`/api/machines/${machineId}/command`, {
+  async function sendCommand(machineId, enabled, totp) {
+    const res = await fetch(`/api/machines/${machineId}/command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify({ enabled }),
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({ enabled, totp }),
     });
+    const data = await res.json();
+    if (res.status === 401 && data.requireTotp) {
+      pendingCommand = { machineId, enabled };
+      document.getElementById('totpModal').classList.remove('hidden');
+      return;
+    }
+    loadMachines();
+  }
+
+  function closeStepup() {
+    pendingCommand = null;
+    document.getElementById('totpModal').classList.add('hidden');
+    document.getElementById('stepupTotp').value = '';
+    document.getElementById('stepupMsg').textContent = '';
+  }
+
+  async function confirmStepup() {
+    if (!pendingCommand) return;
+    const totp = document.getElementById('stepupTotp').value.trim();
+    const { machineId, enabled } = pendingCommand;
+    const res = await fetch(`/api/machines/${machineId}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({ enabled, totp }),
+    });
+    if (!res.ok) {
+      document.getElementById('stepupMsg').textContent = 'รหัสไม่ถูกต้อง ลองใหม่';
+      return;
+    }
+    closeStepup();
     loadMachines();
   }
 
@@ -142,13 +211,13 @@
     if (!confirm('ลบเครื่องนี้ออกจากรายการ?')) return;
     await fetch(`/api/machines/${machineId}`, {
       method: 'DELETE',
-      headers: { 'x-admin-token': token },
+      headers: { 'x-session-token': sessionToken },
     });
     loadMachines();
   }
 
-  if (token) loadMachines();
-  setInterval(loadMachines, 10000);
+  if (sessionToken) showDash();
+  setInterval(() => { if (sessionToken) loadMachines(); }, 10000);
 </script>
 </body>
 </html>
